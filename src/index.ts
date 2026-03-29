@@ -1,5 +1,6 @@
 import * as net from 'net';
 import { createClient } from '@supabase/supabase-js';
+import 'dotenv/config';
 
 interface TelemetryPacket {
   vehicleId: string;
@@ -80,7 +81,8 @@ class OBD2Parser {
     }
 
     const packetLength = buffer[2];
-    const totalPacketSize = packetLength + 4; // +4 for start bytes, length, and stop bytes
+    // Total packet: 2 (start) + 1 (length) + 1 (protocol) + packetLength (payload) + 2 (stop)
+    const totalPacketSize = 2 + 1 + 1 + packetLength + 2;
 
     if (buffer.length < totalPacketSize) {
       // Wait for more data
@@ -155,7 +157,7 @@ class OBD2Parser {
         rpm: telemetry.rpm,
         dtc_codes: telemetry.dtcCodes,
         timestamp: telemetry.timestamp
-      });
+      } as any);  // Type assertion needed - no generated Supabase types
 
     if (error) {
       console.error('Failed to write to Supabase:', error);
