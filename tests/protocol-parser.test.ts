@@ -77,12 +77,12 @@ function buildTestPacket(opts: BuildOptions = {}): Buffer {
   const avlRecord = Buffer.concat([avlFixed, ioData]);
 
   // Payload: codecId + numRecords(1) + avlRecord + numRecords_repeat(1)
-  const header = Buffer.alloc(3);
+  const header = Buffer.alloc(2);
   header[0] = opts.codecId ?? 0x8E;
-  header.writeUInt16BE(1, 1); // 1 record
+  header[1] = 0x01; // 1 record
 
-  const trailer = Buffer.alloc(2);
-  trailer.writeUInt16BE(1, 0);
+  const trailer = Buffer.alloc(1);
+  trailer[0] = 0x01;
 
   const payload = Buffer.concat([header, avlRecord, trailer]);
 
@@ -97,7 +97,7 @@ function buildTestPacket(opts: BuildOptions = {}): Buffer {
 
   // Full packet: preamble(4) + length(4) + payload + crc(2)
   const preamble = Buffer.from([0x00, 0x00, 0x00, 0x00]);
-  const dataLength = payload.length + 2; // payload + CRC
+  const dataLength = payload.length; // CRC appended outside Data Field Length per Teltonika spec
   const lengthBuf = Buffer.alloc(4);
   lengthBuf.writeUInt32BE(dataLength, 0);
 
@@ -126,17 +126,8 @@ describe('crc16', () => {
   });
 
   it('matches expected CRC for [0x8E, 0x00, 0x01]', () => {
-    // Compute expected with same algorithm
-    const buf = Buffer.from([0x8E, 0x00, 0x01]);
-    let crc = 0x0000;
-    for (let i = 0; i < buf.length; i++) {
-      crc ^= buf[i] << 8;
-      for (let j = 0; j < 8; j++) {
-        if (crc & 0x8000) { crc = (crc << 1) ^ 0x1021; }
-        else { crc = crc << 1; }
-      }
-    }
-    expect(crc16(buf)).toBe(crc & 0xFFFF);
+    // CRC-16/IBM (poly 0x8005, reflected) of [0x8E, 0x00, 0x01] = 0xEBA1
+    expect(crc16(Buffer.from([0x8E, 0x00, 0x01]))).toBe(0xEBA1);
   });
 });
 

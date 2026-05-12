@@ -1,16 +1,16 @@
 import { logger } from './logger';
 import { ParsedAVLRecord } from './types';
 
-// CRC-16-IBM (polynomial 0x1021, initial 0x0000)
+// CRC-16/IBM (polynomial 0x8005, reflected input/output, initial 0x0000)
 export function crc16(data: Buffer): number {
   let crc = 0x0000;
   for (let i = 0; i < data.length; i++) {
-    crc ^= data[i] << 8;
+    crc ^= data[i];
     for (let j = 0; j < 8; j++) {
-      if (crc & 0x8000) {
-        crc = (crc << 1) ^ 0x1021;
+      if (crc & 1) {
+        crc = (crc >>> 1) ^ 0xA001;
       } else {
-        crc = crc << 1;
+        crc = crc >>> 1;
       }
     }
   }
@@ -45,12 +45,12 @@ function getAVLRecordSizeAt(payload: Buffer, offset: number): number {
 }
 
 function getAVLRecordSize(payload: Buffer, numRecords: number): number {
-  let offset = 3;
+  let offset = 2;
   for (let i = 0; i < numRecords; i++) {
     offset += getAVLRecordSizeAt(payload, offset);
   }
-  offset += 2;
-  return offset - 3;
+  offset += 1;
+  return offset - 2;
 }
 
 function parseAVLRecord(payload: Buffer, offset: number, imei: string): ParsedAVLRecord | null {
@@ -152,7 +152,7 @@ export function parseCodec8ExtendedPacket(
   }
 
   const dataLength = buffer.readUInt32BE(preambleIndex + 4);
-  const totalSize = 8 + dataLength;
+  const totalSize = 8 + dataLength + 2;
 
   if (buffer.length < preambleIndex + totalSize) {
     return { records: [], consumed: 0 };
@@ -168,13 +168,11 @@ export function parseCodec8ExtendedPacket(
     return { records: [], consumed, error: 'unknown codec' };
   }
 
-  const numRecords = payload.readUInt16BE(1);
+  const numRecords = payload[1];
 
-  // Sum individual record sizes (getAVLRecordSize includes +2 for trailer numRecords repeat)
-  // crcEndOffset = codecId(1) + numRecords(2) + sum_record_sizes + numRecords_repeat(2)
-  // getAVLRecordSize already adds the +2 for trailer, so no extra +2 needed
+  // crcEndOffset = codecId(1) + numRecords(1) + sum_record_sizes_including_uint8_trailer
   const recordsSize = getAVLRecordSize(payload, numRecords);
-  const crcEndOffset = 1 + 2 + recordsSize;
+  const crcEndOffset = 1 + 1 + recordsSize;
 
   if (crcEndOffset > payload.length) {
     logger.warn({ imei }, 'Packet too short for declared records');
@@ -193,7 +191,7 @@ export function parseCodec8ExtendedPacket(
   }
 
   const records: ParsedAVLRecord[] = [];
-  let offset = 3;
+  let offset = 2;
   for (let i = 0; i < numRecords; i++) {
     const record = parseAVLRecord(payload, offset, imei);
     if (record) {
